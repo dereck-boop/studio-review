@@ -226,7 +226,7 @@ The stack is Node 22 with its built-in SQLite, Express, Multer and ffmpeg. There
 
 ## Credits and license
 
-Created by **Dereck Blackburn / Quiethouse Recording**, built with Claude.
+Created by **Dereck Blackburn / Quiethouse Recording**
 
 Released under the **MIT License** (see [LICENSE](LICENSE)): free to use, change and share, including commercially. Keep the copyright notice in copies.
 
