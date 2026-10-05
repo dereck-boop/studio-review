@@ -1,0 +1,40 @@
+# Studio Review: the app plus Caddy for automatic HTTPS.
+#   Production:  docker compose up -d --build
+#   Try locally: docker compose up --build review     (then open http://localhost:8080)
+services:
+  review:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: 8080
+      TRUST_PROXY: "1"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # Everything the app stores: database, original masters, streaming copies, artwork.
+      # On a server with a separate storage volume, point this at it instead, e.g.
+      #   - /mnt/your_volume_name/review:/data
+      - ./data:/data
+      # Optional watch folder (read-only): files dropped in <folder>/<Project>/ are imported.
+      # - /path/to/bounces:/watch:ro
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [review]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

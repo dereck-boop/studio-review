@@ -1,0 +1,7 @@
+# Automatic HTTPS for your DOMAIN (set in .env). Caddy gets and renews the certificate itself.
+{$DOMAIN:localhost} {
+	reverse_proxy review:8080
+	request_body {
+		max_size 4GB
+	}
+}

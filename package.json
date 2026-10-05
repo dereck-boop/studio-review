@@ -1,0 +1,28 @@
+{
+  "name": "studio-review",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted mix review for recording studios: versions, timestamped client notes, share links, loudness QC, album and vinyl side planning.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  },
+  "license": "MIT",
+  "author": "Dereck Blackburn (Quiethouse Recording)",
+  "keywords": [
+    "audio",
+    "mix review",
+    "mastering",
+    "recording studio",
+    "self-hosted",
+    "ffmpeg",
+    "loudness"
+  ]
+}
