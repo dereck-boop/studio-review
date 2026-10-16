@@ -30,6 +30,7 @@ There are no client accounts and no public sign-up. Only you and the people you 
 
 - One link opens a whole project (including tracks you add later) or a single track. Links can have a passcode, an expiry date and a switch for downloading originals, and you can revoke them at any time.
 - No account and no app. It works in any browser, including on phones. Clients type their name once and start leaving notes.
+- **Download all** gives one zip with the original file of the latest version of every track, numbered in album order. You always have it; clients get it only on links where downloads are allowed.
 
 Originals are stored untouched. Clients stream a 256 kbps AAC copy and only get the original WAV if you allow downloads on that link.
 
@@ -208,6 +209,7 @@ src/library.js    clients / projects / tracks / versions / notes, filename parsi
 src/jobs.js       background processing queue
 src/media.js      ffprobe + ffmpeg: streaming copy, waveform peaks, loudness, QC analysis
 src/markers.js    note export formats
+src/zip.js        streaming zip for "Download all"
 src/notify.js     ntfy notifications
 src/watch.js      watch-folder importer
 src/auth.js       sign-in cookie, share passcodes, rate limiting

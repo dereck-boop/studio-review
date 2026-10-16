@@ -527,6 +527,7 @@
     open: () => 'opened the link',
     track: (e) => `viewed ${e.track || 'a deleted track'}`,
     play: (e) => `played ${e.track || 'a deleted track'}${e.version != null ? ` v${e.version}` : ''}`,
+    download_all: () => 'downloaded all tracks (zip)',
     download: (e) => `downloaded ${e.track || 'a deleted track'}${e.version != null ? ` v${e.version}` : ''}`,
     comment: (e) => `left a note on ${e.track || 'a deleted track'}${e.version != null ? ` v${e.version}` : ''}`,
   };
@@ -644,6 +645,11 @@
               title: 'Open the whole project as an album, with gapless playback and mastering QC, in its own window',
               onclick: () => window.open(`/#/album/${id}`, `qh-album-${id}`, 'popup,width=1500,height=940'),
             }, 'Album view'),
+            data.tracks.length ? h('a', {
+              class: 'btn sm',
+              href: `/api/projects/${id}/download-all`,
+              title: 'The original file of the latest version of every track, in one zip',
+            }, 'Download all') : null,
             h('button', {
               class: 'btn sm',
               onclick: async () => {
@@ -731,7 +737,12 @@
     render(h('div', { class: 'stack' },
       h('div', { class: 'project-head' },
         d.project.art ? cover(d.project, '148px') : null,
-        h('div', { class: 'grow' }, h('h1', null, d.project.name), d.project.artist ? h('div', { class: 'sub' }, d.project.artist) : null)),
+        h('div', { class: 'grow' }, h('h1', null, d.project.name), d.project.artist ? h('div', { class: 'sub' }, d.project.artist) : null),
+        d.share.allowDownload && d.tracks.length ? h('div', { class: 'row self-start' }, h('a', {
+          class: 'btn sm',
+          href: `${API}/download-all`,
+          title: 'The original file of the latest version of every track, in one zip',
+        }, 'Download all')) : null),
       listBox));
   }
 

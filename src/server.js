@@ -163,7 +163,7 @@ function shareStats(shareId) {
   const s = db.prepare(`SELECT
       COALESCE(SUM(CASE WHEN kind = 'open' THEN 1 ELSE 0 END), 0) AS opens,
       COALESCE(SUM(CASE WHEN kind = 'play' THEN 1 ELSE 0 END), 0) AS plays,
-      COALESCE(SUM(CASE WHEN kind = 'download' THEN 1 ELSE 0 END), 0) AS downloads,
+      COALESCE(SUM(CASE WHEN kind IN ('download', 'download_all') THEN 1 ELSE 0 END), 0) AS downloads,
       COUNT(DISTINCT visitor) AS visitors,
       MAX(created_at) AS last_seen
     FROM share_events WHERE share_id = ?`).get(shareId);
@@ -325,6 +325,45 @@ S.post('/versions/:vid/comments', (req, res) => {
   }
 });
 
+// ---------- "Download all": the latest version of every track, zipped (stored, not recompressed) ----------
+const { sendZip } = require('./zip');
+const fileSafe = (s) => String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled';
+function albumZipEntries(projectId, onlyTrackId = null) {
+  const p = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
+  if (!p) return null;
+  let tracks = db.prepare('SELECT * FROM tracks WHERE project_id = ? ORDER BY position, created_at').all(projectId);
+  if (onlyTrackId) tracks = tracks.filter((t) => t.id === onlyTrackId);
+  const verStmt = db.prepare('SELECT * FROM versions WHERE track_id = ? ORDER BY number DESC');
+  const folder = fileSafe(p.artist ? `${p.artist} - ${p.name}` : p.name);
+  const width = Math.max(2, String(tracks.length).length);
+  const entries = [];
+  tracks.forEach((t, i) => {
+    const v = verStmt.all(t.id).find((x) => x.original_path && fs.existsSync(x.original_path));
+    if (!v) return;
+    const n = String(i + 1).padStart(width, '0');
+    entries.push({ name: `${folder}/${n} ${fileSafe(t.name)} v${v.number}${path.extname(v.original_path).toLowerCase()}`, path: v.original_path });
+  });
+  return { folder, entries };
+}
+async function sendAlbumZip(res, projectId, onlyTrackId) {
+  const z = albumZipEntries(projectId, onlyTrackId);
+  if (!z) return fail(res, 404, 'Not found');
+  if (!z.entries.length) return fail(res, 404, 'No files to download yet');
+  try {
+    await sendZip(res, `${z.folder}.zip`, z.entries);
+  } catch (e) {
+    console.error('[zip]', e.message);
+    if (!res.headersSent) fail(res, 500, 'Could not build the download');
+    else res.destroy();
+  }
+}
+
+S.get('/download-all', (req, res) => {
+  if (!req.share.allow_download) return fail(res, 403, 'Downloads are off for this link');
+  logEvent(req, req.share, 'download_all');
+  sendAlbumZip(res, req.share.project_id, req.share.track_id);
+});
+
 app.use('/api/s/:token', S);
 
 // ---------- media ----------
@@ -449,6 +488,8 @@ A.get('/projects/:id', (req, res) => {
   const client = p.client_id ? db.prepare('SELECT * FROM clients WHERE id = ?').get(p.client_id) : null;
   res.json({ project: { ...lib.projectOut(p), clientId: client ? client.id : null }, client: client ? clientOut(client) : null, tracks: lib.tracksForProject(p.id) });
 });
+
+A.get('/projects/:id/download-all', (req, res) => sendAlbumZip(res, req.params.id));
 
 A.patch('/projects/:id', (req, res) => {
   const p = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);

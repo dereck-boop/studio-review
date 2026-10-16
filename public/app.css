@@ -404,6 +404,13 @@ main.wrap { max-width: 1360px; padding: 32px 40px 72px; }
 .btn.danger:hover { background: var(--err); border-color: var(--err); color: #fff; }
 input[type=text], input[type=password], input[type=number], textarea, select { border-radius: 0; border: 1.5px solid var(--rule); background: var(--bg); }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--rule); }
+/* Our own chevron, inset from the edge (the native arrow sat almost on the border). */
+select:not([multiple]) {
+  -webkit-appearance: none; appearance: none; padding-right: 34px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 19px) 50%, calc(100% - 14px) 50%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
 .panel { border: 0; border-top: 2px solid var(--rule); border-radius: 0; padding: 16px 0; background: transparent; }
 .pill { border-radius: 0; font-family: var(--mono); font-weight: 500; text-transform: none; letter-spacing: 0; }
 .pill.count { color: var(--accent); border-color: var(--accent); }
