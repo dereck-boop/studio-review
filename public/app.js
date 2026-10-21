@@ -160,10 +160,11 @@
     return sel;
   }
 
-  function uploadFiles(projectId, files, trackId, onProgress) {
+  function uploadFiles(projectId, files, trackId, onProgress, folderId = null) {
     return new Promise((resolve, reject) => {
       const fd = new FormData();
       if (trackId) fd.append('trackId', trackId);
+      if (folderId) fd.append('folderId', folderId);
       for (const f of files) fd.append('files', f, f.name);
       const x = new XMLHttpRequest();
       x.open('POST', `/api/projects/${projectId}/upload`);
@@ -440,15 +441,15 @@
   }
 
   // ---------- project view ----------
-  function trackRows(tracks, { admin, onChange }) {
-    if (!tracks.length) return h('div', { class: 'empty' }, admin ? 'No tracks yet. Drop bounces here — "Song_v3.wav" becomes version 3 of "Song".' : 'Nothing here yet.');
+  function trackRows(tracks, { admin, onChange, folders = [], empty }) {
+    if (!tracks.length) return h('div', { class: 'empty' }, empty || (admin ? 'No tracks yet. Drop bounces here — "Song_v3.wav" becomes version 3 of "Song".' : 'Nothing here yet.'));
     return h('div', { class: 'tracks' }, tracks.map((t, i) => {
       const v = t.latest;
       const status = !v ? null
         : v.status === 'error' ? h('span', { class: 'pill err' }, 'error')
           : v.status !== 'ready' ? h('span', { class: 'pill warn' }, 'processing') : null;
       const shown = t.latestReady || v;
-      return h('div', { class: 'trow', onclick: () => { location.hash = '#/t/' + t.id; } },
+      const row = h('div', { class: 'trow', onclick: () => { location.hash = '#/t/' + t.id; } },
         h('div', { class: 'n' }, i + 1),
         h('div', { class: 'name' }, t.name),
         h('div', { class: 'facts' },
@@ -458,6 +459,7 @@
           shown && shown.duration ? h('span', { class: 'mono' }, fmt(shown.duration)) : null,
           shown && shown.lufs != null ? h('span', { class: 'mono' }, `${shown.lufs.toFixed(1)} LUFS`) : null,
           admin ? h('span', { class: 'acts', onclick: (e) => e.stopPropagation() },
+            folders.length ? h('button', { class: 'btn sm ghost', title: 'Move to a folder', onclick: () => openMoveTrack(t, folders, onChange) }, '⇄') : null,
             h('button', { class: 'btn sm ghost', title: 'Move up', disabled: i === 0, onclick: async () => { await api(`/tracks/${t.id}/move`, { method: 'POST', body: { dir: -1 } }); onChange(); } }, '↑'),
             h('button', { class: 'btn sm ghost', title: 'Move down', disabled: i === tracks.length - 1, onclick: async () => { await api(`/tracks/${t.id}/move`, { method: 'POST', body: { dir: 1 } }); onChange(); } }, '↓'),
             h('button', {
@@ -468,7 +470,90 @@
                 onChange();
               },
             }, '✕')) : null));
+      if (admin && folders.length) {
+        // Drag a row onto another folder (or back onto the main list) to move it.
+        row.draggable = true;
+        row.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('application/x-qh-track', t.id);
+          e.dataTransfer.effectAllowed = 'move';
+          row.classList.add('lifting');
+        });
+        row.addEventListener('dragend', () => row.classList.remove('lifting'));
+      }
+      return row;
     }));
+  }
+
+  function openMoveTrack(t, folders, onChange) {
+    const sel = h('select', null,
+      h('option', { value: '', selected: !t.folderId }, 'Main tracks'),
+      folders.map((f) => h('option', { value: f.id, selected: t.folderId === f.id }, f.name)));
+    modal(`Move “${t.name}”`, h('label', { class: 'field' }, 'Folder', sel), (close) => [
+      h('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      h('button', {
+        class: 'btn primary',
+        onclick: async () => {
+          try {
+            await api(`/tracks/${t.id}`, { method: 'PATCH', body: { folderId: sel.value || null } });
+            close();
+            onChange();
+          } catch (e) { oops(e); }
+        },
+      }, 'Move'),
+    ]);
+  }
+
+  // Main track list plus one section per folder. Admin gets folder controls and drop targets.
+  function folderSections(data, { admin, onChange, onAddFiles }) {
+    const folders = data.folders || [];
+    const byFolder = new Map(folders.map((f) => [f.id, []]));
+    const main = [];
+    for (const t of data.tracks) (t.folderId && byFolder.has(t.folderId) ? byFolder.get(t.folderId) : main).push(t);
+    const opts = { admin, onChange, folders };
+    const out = [h('div', { class: 'fzone', 'data-folder': '' }, trackRows(main, opts))];
+    if (admin) {
+      out.push(h('div', { class: 'row between fbar' },
+        h('h2', null, 'Folders'),
+        h('button', {
+          class: 'btn sm',
+          onclick: async () => {
+            const name = prompt('Folder name (e.g. Stems, Instrumentals, TV mixes)');
+            if (!name || !name.trim()) return;
+            try { await api(`/projects/${data.project.id}/folders`, { method: 'POST', body: { name: name.trim() } }); onChange(); } catch (e) { oops(e); }
+          },
+        }, '+ Folder')));
+      if (!folders.length) out.push(h('div', { class: 'sub small' }, 'Group stems, instrumentals or alternate mixes. Drop files onto a folder to upload straight into it. Album view and the vinyl planner use the main tracks only.'));
+    }
+    folders.forEach((f, fi) => {
+      const list = byFolder.get(f.id);
+      if (!admin && !list.length) return;
+      out.push(h('section', { class: 'folder fzone', 'data-folder': f.id },
+        h('div', { class: 'fhead' },
+          h('div', { class: 'fname' }, f.name),
+          h('div', { class: 'mono sub small' }, `${list.length} ${list.length === 1 ? 'track' : 'tracks'}`),
+          h('div', { class: 'grow' }),
+          admin ? h('div', { class: 'acts' },
+            h('button', { class: 'btn sm', onclick: () => onAddFiles(f) }, '+ Add files'),
+            h('button', {
+              class: 'btn sm ghost',
+              onclick: async () => {
+                const name = prompt('Folder name', f.name);
+                if (!name || !name.trim() || name.trim() === f.name) return;
+                try { await api('/folders/' + f.id, { method: 'PATCH', body: { name: name.trim() } }); onChange(); } catch (e) { oops(e); }
+              },
+            }, 'Rename'),
+            h('button', { class: 'btn sm ghost', title: 'Move folder up', disabled: fi === 0, onclick: async () => { await api(`/folders/${f.id}/move`, { method: 'POST', body: { dir: -1 } }); onChange(); } }, '↑'),
+            h('button', { class: 'btn sm ghost', title: 'Move folder down', disabled: fi === folders.length - 1, onclick: async () => { await api(`/folders/${f.id}/move`, { method: 'POST', body: { dir: 1 } }); onChange(); } }, '↓'),
+            h('button', {
+              class: 'btn sm ghost danger',
+              onclick: async () => {
+                if (!confirm(list.length ? `Delete the folder “${f.name}”? Its ${list.length} track(s) move back to the main list; nothing is deleted.` : `Delete the folder “${f.name}”?`)) return;
+                try { await api('/folders/' + f.id, { method: 'DELETE' }); onChange(); } catch (e) { oops(e); }
+              },
+            }, 'Delete')) : null),
+        trackRows(list, { ...opts, empty: admin ? `Empty. Drop files here or use + Add files.` : 'Nothing here yet.' })));
+    });
+    return h('div', { class: 'stack fsections' }, out);
   }
 
   function openShareDialog({ projectId, trackId, name, onDone }) {
@@ -669,14 +754,19 @@
               },
             }, 'Delete'))));
     };
-    const drawList = () => fill(listBox, trackRows(data.tracks, { admin: true, onChange: refresh }));
+    let uploadFolder = null; // set while the file picker is open for "+ Add files"
+    const drawList = () => fill(listBox, folderSections(data, {
+      admin: true,
+      onChange: () => refresh().catch(oops),
+      onAddFiles: (f) => { uploadFolder = f; fileInput.click(); },
+    }));
     const refresh = async () => {
       data = await api('/projects/' + id);
       drawTitle();
       drawList();
     };
 
-    async function doUpload(files) {
+    async function doUpload(files, folder = null) {
       files = [...files];
       const img = files.find(isImage);
       if (img) setArt(img);
@@ -685,8 +775,8 @@
       progress.classList.remove('hidden');
       const bar = progress.firstChild;
       try {
-        const r = await uploadFiles(id, files, null, (p) => { bar.style.width = (p * 100).toFixed(1) + '%'; });
-        toast(`${r.created.length} file${r.created.length === 1 ? '' : 's'} uploaded — processing`);
+        const r = await uploadFiles(id, files, null, (p) => { bar.style.width = (p * 100).toFixed(1) + '%'; }, folder ? folder.id : null);
+        toast(`${r.created.length} file${r.created.length === 1 ? '' : 's'} uploaded${folder ? ` to ${folder.name}` : ''} — processing`);
         await refresh();
       } catch (e) { oops(e); } finally {
         progress.classList.add('hidden');
@@ -694,8 +784,53 @@
         fileInput.value = '';
       }
     }
-    fileInput.addEventListener('change', () => doUpload(fileInput.files));
-    installDrop(doUpload);
+    fileInput.addEventListener('change', () => { const f = uploadFolder; uploadFolder = null; doUpload(fileInput.files, f); });
+    // The drop zone at the top always means the main list.
+    drop.addEventListener('click', () => { uploadFolder = null; }, true);
+    const zoneAt = (e) => (e.target instanceof Element ? e.target.closest('.fzone') : null);
+    const folderOf = (zone) => (zone && zone.dataset.folder ? (data.folders || []).find((f) => f.id === zone.dataset.folder) || null : null);
+    let lit = null;
+    const light = (zone) => {
+      if (lit === zone) return;
+      if (lit) lit.classList.remove('drop-target');
+      lit = zone;
+      if (lit) lit.classList.add('drop-target');
+    };
+    onCleanup(() => light(null));
+    installDrop((files, e) => { const f = folderOf(zoneAt(e)); light(null); doUpload(files, f); }, (e) => {
+      const zone = zoneAt(e);
+      light(zone && zone.dataset.folder ? zone : null);
+      const f = folderOf(zone);
+      return f ? `Drop to upload into ${f.name}` : 'Drop to upload';
+    });
+    // Moving existing tracks between folders by dragging their rows.
+    const isTrackDrag = (e) => [...(e.dataTransfer?.types || [])].includes('application/x-qh-track');
+    listen(listBox, 'dragover', (e) => {
+      if (!isTrackDrag(e)) return;
+      const zone = zoneAt(e);
+      if (!zone) return light(null);
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      light(zone);
+    });
+    listen(listBox, 'dragleave', (e) => { if (isTrackDrag(e) && !listBox.contains(e.relatedTarget)) light(null); });
+    listen(listBox, 'drop', async (e) => {
+      if (!isTrackDrag(e)) return;
+      e.preventDefault();
+      const zone = zoneAt(e);
+      light(null);
+      if (!zone) return;
+      const trackId = e.dataTransfer.getData('application/x-qh-track');
+      const t = data.tracks.find((x) => x.id === trackId);
+      const target = zone.dataset.folder || null;
+      if (!t || (t.folderId || null) === target) return;
+      try {
+        await api('/tracks/' + trackId, { method: 'PATCH', body: { folderId: target } });
+        const f = folderOf(zone);
+        toast(`Moved “${t.name}” to ${f ? f.name : 'the main list'}`);
+        await refresh();
+      } catch (err) { oops(err); }
+    });
 
     every(3000, () => {
       if (data.tracks.some((t) => t.latest && ['queued', 'processing'].includes(t.latest.status))) refresh().catch(() => {});
@@ -706,20 +841,24 @@
     render(h('div', { class: 'stack' }, titleBox, artInput, drop, fileInput, listBox, shares.el));
   }
 
-  function installDrop(onFiles) {
+  function installDrop(onFiles, labelFor = null) {
     let depth = 0;
     const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    const done = () => { depth = 0; document.body.classList.remove('dragging'); delete document.body.dataset.dropLabel; };
     listen(window, 'dragenter', (e) => { if (!hasFiles(e)) return; depth++; document.body.classList.add('dragging'); });
-    listen(window, 'dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) document.body.classList.remove('dragging'); });
-    listen(window, 'dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+    listen(window, 'dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) done(); });
+    listen(window, 'dragover', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (labelFor) document.body.dataset.dropLabel = labelFor(e);
+    });
     listen(window, 'drop', (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
-      depth = 0;
-      document.body.classList.remove('dragging');
-      onFiles(e.dataTransfer.files);
+      done();
+      onFiles(e.dataTransfer.files, e);
     });
-    onCleanup(() => document.body.classList.remove('dragging'));
+    onCleanup(done);
   }
 
   // ---------- share home ----------
@@ -729,10 +868,10 @@
       history.replaceState(null, '', '#/t/' + d.tracks[0].id);
       return viewTrack(d.tracks[0].id);
     }
-    const listBox = h('div', null, trackRows(d.tracks, { admin: false }));
+    const listBox = h('div', null, folderSections(d, { admin: false }));
     every(20000, async () => {
       const n = await api('').catch(() => null);
-      if (n) fill(listBox, trackRows(n.tracks, { admin: false }));
+      if (n) fill(listBox, folderSections(n, { admin: false }));
     });
     render(h('div', { class: 'stack' },
       h('div', { class: 'project-head' },
@@ -780,9 +919,10 @@
 
     // --- title ---
     function drawTitle() {
+      const inFolder = d.folder ? [' / ', d.folder.name] : null;
       const crumbs = SHARE
-        ? h('div', { class: 'crumbs' }, d.prev || d.next ? h('a', { href: '#/' }, d.project.name) : d.project.name)
-        : h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'Projects'), ' / ', h('a', { href: '#/p/' + d.project.id }, d.project.name));
+        ? h('div', { class: 'crumbs' }, d.prev || d.next || d.folder ? h('a', { href: '#/' }, d.project.name) : d.project.name, inFolder)
+        : h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'Projects'), ' / ', h('a', { href: '#/p/' + d.project.id }, d.project.name), inFolder);
       fill(titleBox, crumbs, h('div', { class: 'titlebar' },
         h('div', { class: 'track-head' },
           h('div', { class: 'track-no' }, pad2((d.track.position ?? 0) + 1)),

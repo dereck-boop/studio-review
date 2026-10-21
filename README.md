@@ -15,6 +15,7 @@ There are no client accounts and no public sign-up. Only you and the people you 
 **For you**
 
 - **Clients → projects → tracks → versions.** Group projects under a client (band, label, company). Upload `Night Drive_v3.wav` and it becomes version 3 of "Night Drive". `Song - mix 4`, `Song_ver2` and `Song rev5` are recognized too.
+- **Folders inside a project.** Group stems, instrumentals or alternate mixes under the main tracks. Drop files onto a folder to upload into it, or drag tracks between folders. Clients see the folders on project links; Album view, the vinyl planner and the main track order use the main tracks only, and **Download all** puts each folder in its own subfolder.
 - **Album art.** Drag an image onto a project page. The home page shows each client's newest cover.
 - **Waveform player with timestamped notes.** Click to seek, or drag across the waveform to mark a range. Press **C** to write a note at the playhead. Notes are numbered on the waveform and support replies and resolve/reopen.
 - **A/B between versions.** Switching versions keeps your place. **1–9** jumps to a version and **A** flips back. **Match loudness** levels the versions so the comparison is fair.

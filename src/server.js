@@ -274,6 +274,7 @@ S.get('/', (req, res) => {
   res.json({
     share: { scope: s.track_id ? 'track' : 'project', allowDownload: !!s.allow_download, label: s.label },
     project: lib.projectOut(project),
+    folders: s.track_id ? [] : lib.foldersForProject(s.project_id),
     tracks: lib.tracksForProject(s.project_id, s.track_id),
   });
 });
@@ -331,18 +332,29 @@ const fileSafe = (s) => String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, '-').
 function albumZipEntries(projectId, onlyTrackId = null) {
   const p = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
   if (!p) return null;
-  let tracks = db.prepare('SELECT * FROM tracks WHERE project_id = ? ORDER BY position, created_at').all(projectId);
+  let tracks = lib.orderedTracks(projectId);
   if (onlyTrackId) tracks = tracks.filter((t) => t.id === onlyTrackId);
   const verStmt = db.prepare('SELECT * FROM versions WHERE track_id = ? ORDER BY number DESC');
+  const folderNames = new Map(lib.foldersForProject(projectId).map((f) => [f.id, fileSafe(f.name)]));
   const folder = fileSafe(p.artist ? `${p.artist} - ${p.name}` : p.name);
-  const width = Math.max(2, String(tracks.length).length);
+  // Main tracks sit at the top of the zip; each project folder becomes a subfolder, numbered on its own.
+  const groups = new Map();
+  for (const t of tracks) {
+    const key = t.folder_id && folderNames.has(t.folder_id) ? t.folder_id : '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
   const entries = [];
-  tracks.forEach((t, i) => {
-    const v = verStmt.all(t.id).find((x) => x.original_path && fs.existsSync(x.original_path));
-    if (!v) return;
-    const n = String(i + 1).padStart(width, '0');
-    entries.push({ name: `${folder}/${n} ${fileSafe(t.name)} v${v.number}${path.extname(v.original_path).toLowerCase()}`, path: v.original_path });
-  });
+  for (const [key, list] of groups) {
+    const dir = key ? `${folder}/${folderNames.get(key)}` : folder;
+    const width = Math.max(2, String(list.length).length);
+    list.forEach((t, i) => {
+      const v = verStmt.all(t.id).find((x) => x.original_path && fs.existsSync(x.original_path));
+      if (!v) return;
+      const n = String(i + 1).padStart(width, '0');
+      entries.push({ name: `${dir}/${n} ${fileSafe(t.name)} v${v.number}${path.extname(v.original_path).toLowerCase()}`, path: v.original_path });
+    });
+  }
   return { folder, entries };
 }
 async function sendAlbumZip(res, projectId, onlyTrackId) {
@@ -486,7 +498,7 @@ A.get('/projects/:id', (req, res) => {
   const p = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   if (!p) return fail(res, 404, 'Not found');
   const client = p.client_id ? db.prepare('SELECT * FROM clients WHERE id = ?').get(p.client_id) : null;
-  res.json({ project: { ...lib.projectOut(p), clientId: client ? client.id : null }, client: client ? clientOut(client) : null, tracks: lib.tracksForProject(p.id) });
+  res.json({ project: { ...lib.projectOut(p), clientId: client ? client.id : null }, client: client ? clientOut(client) : null, folders: lib.foldersForProject(p.id), tracks: lib.tracksForProject(p.id) });
 });
 
 A.get('/projects/:id/download-all', (req, res) => sendAlbumZip(res, req.params.id));
@@ -509,7 +521,8 @@ A.patch('/projects/:id', (req, res) => {
 A.get('/projects/:id/album', (req, res) => {
   const p = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   if (!p) return fail(res, 404, 'Not found');
-  const tracks = db.prepare('SELECT * FROM tracks WHERE project_id = ? ORDER BY position, created_at').all(p.id);
+  // The album is the main track list; folders (stems, alternates…) stay out of the sequence.
+  const tracks = db.prepare('SELECT * FROM tracks WHERE project_id = ? AND folder_id IS NULL ORDER BY position, created_at').all(p.id);
   const latest = db.prepare("SELECT * FROM versions WHERE track_id = ? AND status = 'ready' ORDER BY number DESC LIMIT 1");
   const out = [];
   let skipped = 0;
@@ -611,6 +624,11 @@ A.post('/projects/:id/upload', upload.array('files'), (req, res) => {
     cleanup();
     return fail(res, 400, 'Track not in this project');
   }
+  const folderId = str(req.body?.folderId, 40) || null;
+  if (folderId && !db.prepare('SELECT 1 FROM folders WHERE id = ? AND project_id = ?').get(folderId, p.id)) {
+    cleanup();
+    return fail(res, 400, 'Folder not in this project');
+  }
   const created = [];
   for (const f of files) {
     try {
@@ -618,7 +636,7 @@ A.post('/projects/:id/upload', upload.array('files'), (req, res) => {
         const { number } = lib.parseFilename(f.originalname);
         created.push(lib.addVersion({ trackId, number, originalName: f.originalname, srcPath: f.path }));
       } else {
-        created.push(lib.ingestFile(p.id, f.originalname, f.path));
+        created.push(lib.ingestFile(p.id, f.originalname, f.path, folderId));
       }
     } catch (e) {
       fs.rmSync(f.path, { force: true });
@@ -636,9 +654,44 @@ A.get('/tracks/:id', (req, res) => {
 });
 
 A.patch('/tracks/:id', (req, res) => {
-  const name = str(req.body?.name, 200);
-  if (!name) return fail(res, 400, 'Name required');
-  db.prepare('UPDATE tracks SET name = ? WHERE id = ?').run(name, req.params.id);
+  const t = db.prepare('SELECT * FROM tracks WHERE id = ?').get(req.params.id);
+  if (!t) return fail(res, 404, 'Not found');
+  if (req.body && 'folderId' in req.body) {
+    const folderId = str(req.body.folderId, 40) || null;
+    if (folderId && !db.prepare('SELECT 1 FROM folders WHERE id = ? AND project_id = ?').get(folderId, t.project_id)) return fail(res, 400, 'Folder not in this project');
+    lib.setTrackFolder(t.id, folderId);
+  }
+  if (req.body && 'name' in req.body) {
+    const name = str(req.body.name, 200);
+    if (!name) return fail(res, 400, 'Name required');
+    db.prepare('UPDATE tracks SET name = ? WHERE id = ?').run(name, t.id);
+  }
+  res.json({ ok: true });
+});
+
+// ---------- folders inside a project ----------
+A.post('/projects/:id/folders', (req, res) => {
+  if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(req.params.id)) return fail(res, 404, 'Not found');
+  const name = str(req.body?.name, 120);
+  if (!name) return fail(res, 400, 'Folder name required');
+  res.status(201).json(lib.createFolder(req.params.id, name));
+});
+
+A.patch('/folders/:id', (req, res) => {
+  const name = str(req.body?.name, 120);
+  if (!name) return fail(res, 400, 'Folder name required');
+  const r = db.prepare('UPDATE folders SET name = ? WHERE id = ?').run(name, req.params.id);
+  if (!r.changes) return fail(res, 404, 'Not found');
+  res.json({ ok: true });
+});
+
+A.post('/folders/:id/move', (req, res) => {
+  lib.moveFolder(req.params.id, req.body?.dir < 0 ? -1 : 1);
+  res.json({ ok: true });
+});
+
+A.delete('/folders/:id', (req, res) => {
+  if (!lib.deleteFolder(req.params.id)) return fail(res, 404, 'Not found');
   res.json({ ok: true });
 });
 

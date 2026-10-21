@@ -96,6 +96,16 @@ CREATE TABLE IF NOT EXISTS share_events (
 CREATE INDEX IF NOT EXISTS share_events_share ON share_events(share_id, created_at);
 CREATE INDEX IF NOT EXISTS share_events_visitor ON share_events(visitor, created_at);
 
+-- Folders inside a project (e.g. "Stems", "Instrumentals"): tracks with folder_id NULL are the main list.
+CREATE TABLE IF NOT EXISTS folders (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS folders_project ON folders(project_id, position);
+
 CREATE TABLE IF NOT EXISTS imports (
   path TEXT NOT NULL,
   size INTEGER NOT NULL,
@@ -112,6 +122,8 @@ CREATE TABLE IF NOT EXISTS imports (
   if (!cols.has('client_id')) db.exec('ALTER TABLE projects ADD COLUMN client_id TEXT REFERENCES clients(id) ON DELETE SET NULL');
   if (!cols.has('art_path')) db.exec('ALTER TABLE projects ADD COLUMN art_path TEXT');
   if (!cols.has('vinyl')) db.exec('ALTER TABLE projects ADD COLUMN vinyl TEXT');
+  const tcols = new Set(db.prepare('PRAGMA table_info(tracks)').all().map((c) => c.name));
+  if (!tcols.has('folder_id')) db.exec('ALTER TABLE tracks ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL');
   const vcols = new Set(db.prepare('PRAGMA table_info(versions)').all().map((c) => c.name));
   if (!vcols.has('analysis')) db.exec('ALTER TABLE versions ADD COLUMN analysis TEXT');
 }

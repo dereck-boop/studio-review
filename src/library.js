@@ -36,14 +36,15 @@ function findOrCreateProject(name) {
   return hit || createProject(name);
 }
 
-function findOrCreateTrack(projectId, name) {
-  const rows = db.prepare('SELECT * FROM tracks WHERE project_id = ?').all(projectId);
+// Track names are matched within one folder, so "Song_v2" in Stems never stacks onto the main "Song".
+function findOrCreateTrack(projectId, name, folderId = null) {
+  const rows = db.prepare('SELECT * FROM tracks WHERE project_id = ? AND folder_id IS ?').all(projectId, folderId || null);
   const hit = rows.find((r) => normName(r.name) === normName(name));
   if (hit) return hit;
   const pos = rows.reduce((m, r) => Math.max(m, r.position), -1) + 1;
   const id = newId();
-  db.prepare('INSERT INTO tracks (id, project_id, name, position, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(id, projectId, name, pos, now());
+  db.prepare('INSERT INTO tracks (id, project_id, name, position, folder_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, projectId, name, pos, folderId || null, now());
   return db.prepare('SELECT * FROM tracks WHERE id = ?').get(id);
 }
 
@@ -76,9 +77,9 @@ function addVersion({ trackId, number, originalName, srcPath, note = '' }) {
 }
 
 // Upload without a target track: the filename decides track + version number.
-function ingestFile(projectId, originalName, srcPath) {
+function ingestFile(projectId, originalName, srcPath, folderId = null) {
   const { name, number } = parseFilename(originalName);
-  const track = findOrCreateTrack(projectId, name);
+  const track = findOrCreateTrack(projectId, name, folderId);
   return addVersion({ trackId: track.id, number, originalName, srcPath });
 }
 
@@ -133,8 +134,60 @@ function removeArt(p) {
   fs.rmSync(p.art_path.replace(/\.jpg$/, '-t.jpg'), { force: true });
 }
 
+// Main tracks first, then each folder in its own order.
+const ORDERED_TRACKS = `SELECT t.* FROM tracks t LEFT JOIN folders f ON f.id = t.folder_id WHERE t.project_id = ?
+  ORDER BY (t.folder_id IS NOT NULL), f.position, f.created_at, t.position, t.created_at`;
+function orderedTracks(projectId) {
+  return db.prepare(ORDERED_TRACKS).all(projectId);
+}
+
+function foldersForProject(projectId) {
+  return db.prepare('SELECT * FROM folders WHERE project_id = ? ORDER BY position, created_at').all(projectId)
+    .map((f) => ({ id: f.id, name: f.name, position: f.position }));
+}
+
+function createFolder(projectId, name) {
+  const pos = (db.prepare('SELECT MAX(position) AS m FROM folders WHERE project_id = ?').get(projectId).m ?? -1) + 1;
+  const id = newId();
+  db.prepare('INSERT INTO folders (id, project_id, name, position, created_at) VALUES (?, ?, ?, ?, ?)').run(id, projectId, name, pos, now());
+  touchProject(projectId);
+  return { id, name, position: pos };
+}
+
+// Deleting a folder keeps its tracks: they go back to the end of the main list.
+function deleteFolder(id) {
+  const f = db.prepare('SELECT * FROM folders WHERE id = ?').get(id);
+  if (!f) return false;
+  for (const t of db.prepare('SELECT id FROM tracks WHERE folder_id = ? ORDER BY position, created_at').all(id)) setTrackFolder(t.id, null);
+  db.prepare('DELETE FROM folders WHERE id = ?').run(id);
+  return true;
+}
+
+function moveFolder(id, dir) {
+  const f = db.prepare('SELECT * FROM folders WHERE id = ?').get(id);
+  if (!f) return;
+  const rows = db.prepare('SELECT id FROM folders WHERE project_id = ? ORDER BY position, created_at').all(f.project_id);
+  const i = rows.findIndex((r) => r.id === id);
+  const j = i + (dir < 0 ? -1 : 1);
+  if (j < 0 || j >= rows.length) return;
+  [rows[i], rows[j]] = [rows[j], rows[i]];
+  const upd = db.prepare('UPDATE folders SET position = ? WHERE id = ?');
+  rows.forEach((r, k) => upd.run(k, r.id));
+}
+
+function setTrackFolder(trackId, folderId) {
+  const t = db.prepare('SELECT * FROM tracks WHERE id = ?').get(trackId);
+  if (!t) return false;
+  folderId = folderId || null;
+  if ((t.folder_id || null) === folderId) return true;
+  const pos = (db.prepare('SELECT MAX(position) AS m FROM tracks WHERE project_id = ? AND folder_id IS ?').get(t.project_id, folderId).m ?? -1) + 1;
+  db.prepare('UPDATE tracks SET folder_id = ?, position = ? WHERE id = ?').run(folderId, pos, trackId);
+  touchProject(t.project_id);
+  return true;
+}
+
 function tracksForProject(projectId, onlyTrackId = null) {
-  let tracks = db.prepare('SELECT * FROM tracks WHERE project_id = ? ORDER BY position, created_at').all(projectId);
+  let tracks = orderedTracks(projectId);
   if (onlyTrackId) tracks = tracks.filter((t) => t.id === onlyTrackId);
   const verStmt = db.prepare('SELECT * FROM versions WHERE track_id = ? ORDER BY number DESC');
   const cStmt = db.prepare(`SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN c.resolved = 0 THEN 1 ELSE 0 END), 0) AS open
@@ -148,6 +201,7 @@ function tracksForProject(projectId, onlyTrackId = null) {
       id: t.id,
       name: t.name,
       position: t.position,
+      folderId: t.folder_id || null,
       versionCount: versions.length,
       latest: latest ? versionOut(latest) : null,
       latestReady: latestReady ? versionOut(latestReady) : null,
@@ -163,12 +217,14 @@ function trackDetail(trackId, siblingScope = null) {
   const versions = db.prepare('SELECT * FROM versions WHERE track_id = ? ORDER BY number').all(trackId);
   const comments = db.prepare(`SELECT c.* FROM comments c JOIN versions v ON v.id = c.version_id
     WHERE v.track_id = ? ORDER BY c.start_time, c.created_at`).all(trackId);
-  let siblings = db.prepare('SELECT id, name FROM tracks WHERE project_id = ? ORDER BY position, created_at').all(track.project_id);
+  // Prev/next stay inside the track's own folder (main mixes don't run on into stems).
+  let siblings = db.prepare('SELECT id, name FROM tracks WHERE project_id = ? AND folder_id IS ? ORDER BY position, created_at').all(track.project_id, track.folder_id || null);
   if (siblingScope === 'track') siblings = siblings.filter((s) => s.id === trackId);
   const idx = siblings.findIndex((s) => s.id === trackId);
   return {
     project: projectOut(project),
     track: { id: track.id, name: track.name, position: track.position },
+    folder: track.folder_id ? (db.prepare('SELECT id, name FROM folders WHERE id = ?').get(track.folder_id) || null) : null,
     versions: versions.map(versionOut),
     comments: comments.map(commentOut),
     prev: idx > 0 ? siblings[idx - 1] : null,
@@ -206,7 +262,7 @@ function deleteProject(id) {
 function moveTrack(id, dir) {
   const t = db.prepare('SELECT * FROM tracks WHERE id = ?').get(id);
   if (!t) return;
-  const rows = db.prepare('SELECT id FROM tracks WHERE project_id = ? ORDER BY position, created_at').all(t.project_id);
+  const rows = db.prepare('SELECT id FROM tracks WHERE project_id = ? AND folder_id IS ? ORDER BY position, created_at').all(t.project_id, t.folder_id || null);
   const i = rows.findIndex((r) => r.id === id);
   const j = i + (dir < 0 ? -1 : 1);
   if (j < 0 || j >= rows.length) return;
@@ -218,5 +274,5 @@ function moveTrack(id, dir) {
 module.exports = {
   AUDIO_EXT, parseFilename, createProject, findOrCreateProject, findOrCreateTrack,
   addVersion, ingestFile, tracksForProject, trackDetail, deleteVersion, deleteTrack,
-  deleteProject, moveTrack, versionOut, commentOut, projectOut, touchProject, removeArt,
+  deleteProject, moveTrack, versionOut, orderedTracks, foldersForProject, createFolder, deleteFolder, moveFolder, setTrackFolder, commentOut, projectOut, touchProject, removeArt,
 };
