@@ -560,3 +560,14 @@ body.dragging::after { background: color-mix(in srgb, var(--bg) 45%, transparent
 @media (max-width: 640px) {
   .folder .fhead .acts { width: 100%; flex-wrap: wrap; }
 }
+
+/* ---------- client downloads switch (under the track list) ---------- */
+.dlbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 4px; border-top: 1.5px solid var(--rule); }
+.dlbar:empty { display: none; }
+.dlbar .dl-text { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; flex: 1; min-width: 0; font-size: 14px; }
+.dlbar .dl-dot { width: 9px; height: 9px; background: var(--line); align-self: center; flex: none; }
+.dlbar .dl-dot.on { background: var(--ok, #0f8a5f); }
+.dlbar .dl-dot.some { background: var(--warn, #c98a00); }
+button.pill-toggle { cursor: pointer; font: inherit; font-family: var(--mono); font-size: 12px; background: transparent; color: var(--muted); }
+button.pill-toggle.on { color: var(--ok, #0f8a5f); border-color: currentColor; }
+button.pill-toggle:hover { color: var(--text); border-color: var(--rule); }

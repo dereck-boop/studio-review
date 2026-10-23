@@ -29,6 +29,7 @@ There are no client accounts and no public sign-up. Only you and the people you 
 
 **For your clients**
 
+- **Client downloads in one click.** A switch under the track list turns original-file downloads on or off for every link on the project; each link also has its own on/off toggle.
 - One link opens a whole project (including tracks you add later) or a single track. Links can have a passcode, an expiry date and a switch for downloading originals, and you can revoke them at any time.
 - No account and no app. It works in any browser, including on phones. Clients type their name once and start leaving notes.
 - **Download all** gives one zip with the original file of the latest version of every track, numbered in album order. You always have it; clients get it only on links where downloads are allowed.

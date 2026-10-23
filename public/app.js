@@ -504,13 +504,13 @@
   }
 
   // Main track list plus one section per folder. Admin gets folder controls and drop targets.
-  function folderSections(data, { admin, onChange, onAddFiles }) {
+  function folderSections(data, { admin, onChange, onAddFiles, afterMain = null }) {
     const folders = data.folders || [];
     const byFolder = new Map(folders.map((f) => [f.id, []]));
     const main = [];
     for (const t of data.tracks) (t.folderId && byFolder.has(t.folderId) ? byFolder.get(t.folderId) : main).push(t);
     const opts = { admin, onChange, folders };
-    const out = [h('div', { class: 'fzone', 'data-folder': '' }, trackRows(main, opts))];
+    const out = [h('div', { class: 'fzone', 'data-folder': '' }, trackRows(main, opts), afterMain)];
     if (admin) {
       out.push(h('div', { class: 'row between fbar' },
         h('h2', null, 'Folders'),
@@ -556,11 +556,11 @@
     return h('div', { class: 'stack fsections' }, out);
   }
 
-  function openShareDialog({ projectId, trackId, name, onDone }) {
+  function openShareDialog({ projectId, trackId, name, onDone, allowDownload = false }) {
     const label = h('input', { type: 'text', placeholder: 'e.g. Band — mix round 2' });
     const pass = h('input', { type: 'text', placeholder: 'Optional', autocomplete: 'off' });
     const days = h('select', null, [['0', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days']].map(([v, t]) => h('option', { value: v }, t)));
-    const dl = h('input', { type: 'checkbox' });
+    const dl = h('input', { type: 'checkbox', checked: allowDownload });
     const body = h('div', { class: 'stack' },
       h('div', { class: 'sub small' }, trackId ? `Only "${name}" will be visible.` : 'Every track in this project will be visible, including ones you add later.'),
       h('label', { class: 'field' }, 'Label (for you)', label),
@@ -632,13 +632,18 @@
     (close) => [h('button', { class: 'btn', onclick: close }, 'Close')]);
   }
 
-  function sharesPanel(projectId) {
+  function sharesPanel(projectId, onLoad = () => {}) {
     const box = h('div', { class: 'panel shares' }, h('div', { class: 'sub small' }, 'Loading…'));
+    const setDl = async (s, on) => {
+      try { await api('/shares/' + s.id, { method: 'PATCH', body: { allowDownload: on } }); toast(on ? 'Downloads on for this link' : 'Downloads off for this link'); await load(); } catch (e) { oops(e); }
+    };
     const load = async () => {
       const { shares } = await api('/shares?projectId=' + encodeURIComponent(projectId));
+      onLoad(shares);
+      const allOn = shares.length > 0 && shares.every((x) => x.allowDownload);
       fill(box, 
         h('div', { class: 'row between' }, h('h2', null, 'Share links'),
-          h('button', { class: 'btn sm', onclick: () => openShareDialog({ projectId, onDone: load }) }, '+ Project link')),
+          h('button', { class: 'btn sm', onclick: () => openShareDialog({ projectId, onDone: load, allowDownload: allOn }) }, '+ Project link')),
         shares.length ? null : h('div', { class: 'sub small' }, 'No links yet. Clients listen and comment without an account.'),
         shares.map((s) => {
           const expired = s.expiresAt && s.expiresAt < Date.now();
@@ -647,7 +652,11 @@
               h('div', null, s.label || (s.scope === 'track' ? s.trackName : 'Whole project'),
                 ' ', h('span', { class: 'pill' }, s.scope === 'track' ? 'track' : 'project'),
                 s.hasPasscode ? h('span', { class: 'pill' }, ' passcode') : null,
-                s.allowDownload ? h('span', { class: 'pill' }, 'downloads') : null,
+                h('button', {
+                  class: 'pill pill-toggle' + (s.allowDownload ? ' on' : ''),
+                  title: s.allowDownload ? 'Clients can download the original files. Click to turn off.' : 'Stream only. Click to allow downloading the original files.',
+                  onclick: () => setDl(s, !s.allowDownload),
+                }, s.allowDownload ? 'downloads on' : 'no downloads'),
                 expired ? h('span', { class: 'pill err' }, 'expired') : s.expiresAt ? h('span', { class: 'pill' }, 'until ' + new Date(s.expiresAt).toLocaleDateString()) : null),
               h('div', { class: 'url' }, shareUrl(s)),
               activityLine(s.activity)),
@@ -691,7 +700,37 @@
     const drop = h('div', { class: 'drop', onclick: () => fileInput.click() },
       h('b', null, 'Drop bounces here'), ' or click to choose. ',
       h('span', { class: 'small' }, '“Song_v3.wav” becomes version 3 of “Song”. Drop an image to set the album art.'), progress);
-    const shares = sharesPanel(id);
+    // Under the track list: one switch for whether clients can download the original files.
+    const dlBar = h('div', { class: 'dlbar' });
+    let shareList = null;
+    const drawDl = () => {
+      if (!shareList) return fill(dlBar);
+      const total = shareList.length;
+      const on = shareList.filter((s) => s.allowDownload).length;
+      const setAll = async (allow) => {
+        try {
+          const r = await api(`/projects/${id}/downloads`, { method: 'POST', body: { allow } });
+          toast(allow ? `Downloads on for ${r.links} link${r.links === 1 ? '' : 's'}` : 'Downloads off: clients can stream only');
+          await shares.reload();
+        } catch (e) { oops(e); }
+      };
+      const newLink = () => openShareDialog({ projectId: id, allowDownload: true, onDone: () => shares.reload() });
+      if (!total) {
+        return fill(dlBar,
+          h('div', { class: 'dl-text' }, h('b', null, 'Client downloads'), h('span', { class: 'sub' }, 'No client links yet.')),
+          h('button', { class: 'btn sm primary', onclick: newLink }, '+ Link with downloads'));
+      }
+      fill(dlBar,
+        h('div', { class: 'dl-text' },
+          h('span', { class: 'dl-dot' + (on === total ? ' on' : on ? ' some' : '') }),
+          h('b', null, on === total ? 'Downloads on' : on ? `Downloads on for ${on} of ${total} links` : 'Downloads off'),
+          h('span', { class: 'sub' }, on === total
+            ? `Clients can download the original files on ${total === 1 ? 'your link' : `all ${total} links`}.`
+            : on ? 'Some links are stream-only.' : 'Clients can stream but not download.')),
+        on < total ? h('button', { class: 'btn sm primary', onclick: () => setAll(true) }, on ? 'Allow on all links' : 'Allow downloads') : null,
+        on > 0 ? h('button', { class: 'btn sm', onclick: () => setAll(false) }, 'Turn off') : null);
+    };
+    const shares = sharesPanel(id, (list) => { shareList = list; drawDl(); });
 
     const drawTitle = () => {
       const p = data.project;
@@ -759,6 +798,7 @@
       admin: true,
       onChange: () => refresh().catch(oops),
       onAddFiles: (f) => { uploadFolder = f; fileInput.click(); },
+      afterMain: dlBar,
     }));
     const refresh = async () => {
       data = await api('/projects/' + id);

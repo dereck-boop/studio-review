@@ -807,6 +807,21 @@ A.get('/shares/:id/activity', (req, res) => {
   });
 });
 
+// Turn original-file downloads on/off for one link…
+A.patch('/shares/:id', (req, res) => {
+  if (!req.body || !('allowDownload' in req.body)) return fail(res, 400, 'Nothing to change');
+  const r = db.prepare('UPDATE shares SET allow_download = ? WHERE id = ?').run(req.body.allowDownload ? 1 : 0, req.params.id);
+  if (!r.changes) return fail(res, 404, 'Not found');
+  res.json(shareOut(db.prepare('SELECT * FROM shares WHERE id = ?').get(req.params.id)));
+});
+
+// …or for every link on a project at once (the switch under the track list).
+A.post('/projects/:id/downloads', (req, res) => {
+  if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(req.params.id)) return fail(res, 404, 'Not found');
+  const r = db.prepare('UPDATE shares SET allow_download = ? WHERE project_id = ?').run(req.body?.allow ? 1 : 0, req.params.id);
+  res.json({ ok: true, links: r.changes });
+});
+
 A.delete('/shares/:id', (req, res) => {
   db.prepare('DELETE FROM shares WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
