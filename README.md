@@ -234,4 +234,4 @@ Created by **Dereck Blackburn / Quiethouse Recording**
 
 Released under the **MIT License** (see [LICENSE](LICENSE)): free to use, change and share, including commercially. Keep the copyright notice in copies.
 
-Fonts: [Archivo](https://github.com/Omnibus-Type/Archivo) and [IBM Plex Mono](https://github.com/IBM/plex), both under the SIL Open Font License 1.1 (licenses in `public/fonts/`).
+Fonts: [Inter Tight](https://github.com/rsms/inter-tight) and [IBM Plex Mono](https://github.com/IBM/plex), both under the SIL Open Font License 1.1 (licenses in `public/fonts/`).

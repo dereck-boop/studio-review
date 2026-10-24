@@ -1,9 +1,10 @@
 /* ===== Studio Review — "Pressing Plant" theme: Swiss record-label typography ===== */
-@font-face { font-family: 'Archivo'; font-weight: 400; font-display: swap; src: url('/static/fonts/archivo-latin-400-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Archivo'; font-weight: 500; font-display: swap; src: url('/static/fonts/archivo-latin-500-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Archivo'; font-weight: 600; font-display: swap; src: url('/static/fonts/archivo-latin-600-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Archivo'; font-weight: 800; font-display: swap; src: url('/static/fonts/archivo-latin-800-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Archivo'; font-weight: 900; font-display: swap; src: url('/static/fonts/archivo-latin-900-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Tight'; font-weight: 400; font-display: swap; src: url('/static/fonts/inter-tight-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Tight'; font-weight: 500; font-display: swap; src: url('/static/fonts/inter-tight-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Tight'; font-weight: 600; font-display: swap; src: url('/static/fonts/inter-tight-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Tight'; font-weight: 700; font-display: swap; src: url('/static/fonts/inter-tight-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Tight'; font-weight: 800; font-display: swap; src: url('/static/fonts/inter-tight-latin-800-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter Tight'; font-weight: 900; font-display: swap; src: url('/static/fonts/inter-tight-latin-900-normal.woff2') format('woff2'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: swap; src: url('/static/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-display: swap; src: url('/static/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 600; font-display: swap; src: url('/static/fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2'); }
@@ -27,7 +28,7 @@
   --err: #c62a1b;
   --radius: 0px;
   --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
-  --sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, sans-serif;
+  --sans: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, sans-serif;
   color-scheme: light;
 }
 /* dark: the same system printed in reverse */
@@ -73,7 +74,7 @@ main.wrap { max-width: 1040px; margin: 0 auto; padding: 24px 20px 80px; }
 .between { justify-content: space-between; }
 .grow { flex: 1; }
 .stack > * + * { margin-top: 16px; }
-h1 { font-size: 26px; line-height: 1.2; margin: 0; letter-spacing: -.01em; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0; letter-spacing: -.005em; }
 h2 { font-size: 15px; margin: 0; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 .sub { color: var(--muted); }
 .crumbs { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
@@ -380,13 +381,13 @@ canvas.al-ruler { display: block; height: 26px; border-top: 1px solid var(--line
 
 /* ================= Pressing Plant components (override the base styles above) ================= */
 html, body { font: 15px/1.45 var(--sans); }
-h1 { font-weight: 900; letter-spacing: -0.03em; }
+h1 { font-weight: 800; letter-spacing: -0.01em; }
 h2 { font-family: var(--mono); font-weight: 500; font-size: 12px; letter-spacing: 0.04em; color: var(--muted); }
 .mono, .clock, .tc, .vchip, .kbd { font-family: var(--mono); }
 
 /* header */
 header.top { border-bottom: 2px solid var(--rule); padding: 0 40px; height: 64px; background: var(--bg); backdrop-filter: none; }
-.brand { font-weight: 900; font-size: 18px; letter-spacing: -0.01em; gap: 0; }
+.brand { font-weight: 900; font-size: 18px; letter-spacing: -0.005em; gap: 0; }
 .brand-dot { color: var(--accent); margin: 0 1px; }
 .theme-switch { border: 2px solid var(--rule); border-radius: 0; }
 .theme-switch button + button { border-left: 2px solid var(--rule); }
@@ -422,7 +423,7 @@ select:not([multiple]) {
 
 /* home hero + stats */
 .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); padding-bottom: 18px; }
-h1.display { margin: 0; font-size: clamp(56px, 9vw, 112px); line-height: 0.85; font-weight: 900; letter-spacing: -0.045em; overflow-wrap: anywhere; }
+h1.display { margin: 0; font-size: clamp(36px, 5vw, 64px); line-height: 0.92; font-weight: 800; letter-spacing: -0.015em; overflow-wrap: anywhere; }
 .stats { display: flex; gap: 36px; flex-wrap: wrap; }
 .stat-label { font-family: var(--mono); font-size: 13px; color: var(--muted); }
 .stat-value { font-size: 28px; font-weight: 800; }
@@ -437,32 +438,32 @@ h1.display { margin: 0; font-size: clamp(56px, 9vw, 112px); line-height: 0.85; f
 .card-top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; }
 .card-top .flag { color: var(--accent); }
 .card-top .flag.none { color: var(--muted); }
-.card .t { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; white-space: normal; }
+.card .t { font-size: 22px; font-weight: 700; letter-spacing: -0.005em; line-height: 1.05; white-space: normal; }
 .card-sub { color: var(--muted); font-size: 14px; margin-top: -6px; }
 .card-foot { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; margin-top: auto; }
 .cover { border-radius: 0; }
 .card-cover { border-radius: 0; }
 .cover.blank { background: var(--rule); }
-.cover.blank span { color: var(--bg); font-weight: 900; letter-spacing: -0.03em; }
+.cover.blank span { color: var(--bg); font-weight: 900; letter-spacing: -0.018em; }
 .client-group + .client-group { margin-top: 40px; }
 .group-head { border-bottom: 0; margin-bottom: 12px; }
-.group-title { font-family: var(--sans); font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: var(--text); }
+.group-title { font-family: var(--sans); font-size: 20px; font-weight: 800; letter-spacing: -0.005em; color: var(--text); }
 
 /* project page */
 .project-head { gap: 24px; padding-bottom: 6px; }
-.project-head h1 { font-size: clamp(40px, 6vw, 72px); line-height: 0.95; letter-spacing: -0.04em; padding-bottom: 0.06em; }
+.project-head h1 { font-size: clamp(32px, 4.4vw, 54px); line-height: 0.98; letter-spacing: -0.015em; padding-bottom: 0.06em; }
 .art-edit, .art-edit .art-hint { border-radius: 0; }
 .tracks { border: 0; border-top: 2px solid var(--rule); border-radius: 0; background: transparent; }
 .trow { border-top: 1px solid var(--line); padding: 14px 4px; }
 .trow:hover { background: var(--panel-2); }
 .trow .n { font-size: 13px; }
-.trow .name { font-size: 20px; font-weight: 800; letter-spacing: -0.015em; }
+.trow .name { font-size: 17px; font-weight: 700; letter-spacing: -0.003em; }
 .shares .srow { border-top: 1px solid var(--line); }
 
 /* track page */
 .track-head { gap: 22px; align-items: flex-start; }
 .track-no { font-family: var(--mono); font-size: 14px; padding-top: 10px; }
-.track-head h1.display { font-size: clamp(56px, 10vw, 128px); line-height: 0.95; letter-spacing: -0.05em; padding-bottom: 0.08em; }
+.track-head h1.display { font-size: clamp(36px, 5vw, 68px); line-height: 0.98; letter-spacing: -0.015em; padding-bottom: 0.08em; }
 .track-head .sub { margin-top: 10px; font-family: var(--mono); font-size: 13px; }
 .titlebar { border-bottom: 1px solid var(--rule); padding-bottom: 16px; align-items: flex-end; }
 .versions { gap: 0; }
@@ -523,17 +524,17 @@ canvas.wave { height: 180px; }
 .al-dot, .dot { border-radius: 0; }
 
 /* title sizes by length (len-s keeps the full poster size) */
-h1.display.len-m { font-size: clamp(44px, 6.5vw, 84px); line-height: 0.92; }
-h1.display.len-l { font-size: clamp(34px, 4.4vw, 56px); line-height: 1; letter-spacing: -0.03em; }
-h1.display.len-xl { font-size: clamp(26px, 2.8vw, 38px); line-height: 1.1; letter-spacing: -0.02em; font-weight: 800; }
-.track-head h1.display.len-m { font-size: clamp(44px, 7vw, 92px); line-height: 0.95; }
-.track-head h1.display.len-l { font-size: clamp(34px, 4.6vw, 60px); line-height: 1; letter-spacing: -0.03em; }
-.track-head h1.display.len-xl { font-size: clamp(26px, 2.8vw, 38px); line-height: 1.12; letter-spacing: -0.02em; font-weight: 800; }
+h1.display.len-m { font-size: clamp(32px, 4vw, 54px); line-height: 0.96; }
+h1.display.len-l { font-size: clamp(30px, 3.6vw, 46px); line-height: 1.02; letter-spacing: -0.012em; }
+h1.display.len-xl { font-size: clamp(24px, 2.4vw, 32px); line-height: 1.12; letter-spacing: -0.008em; font-weight: 800; }
+.track-head h1.display.len-m { font-size: clamp(32px, 4.2vw, 56px); line-height: 0.98; }
+.track-head h1.display.len-l { font-size: clamp(30px, 3.8vw, 48px); line-height: 1.02; letter-spacing: -0.012em; }
+.track-head h1.display.len-xl { font-size: clamp(24px, 2.4vw, 32px); line-height: 1.14; letter-spacing: -0.008em; font-weight: 800; }
 h1.display.len-l, h1.display.len-xl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; overflow-wrap: break-word; }
-h1.proj-title { margin: 0; font-size: clamp(40px, 6vw, 72px); line-height: 0.95; letter-spacing: -0.04em; padding-bottom: 0.06em; overflow-wrap: anywhere; }
-h1.proj-title.len-m { font-size: clamp(34px, 4.5vw, 56px); line-height: 1; }
-h1.proj-title.len-l { font-size: clamp(28px, 3.4vw, 42px); line-height: 1.05; letter-spacing: -0.025em; }
-h1.proj-title.len-xl { font-size: clamp(24px, 2.6vw, 32px); line-height: 1.15; letter-spacing: -0.015em; font-weight: 800; }
+h1.proj-title { margin: 0; font-size: clamp(32px, 4.4vw, 54px); line-height: 0.98; letter-spacing: -0.015em; padding-bottom: 0.06em; overflow-wrap: anywhere; }
+h1.proj-title.len-m { font-size: clamp(28px, 3.6vw, 44px); line-height: 1.02; }
+h1.proj-title.len-l { font-size: clamp(26px, 3vw, 36px); line-height: 1.05; letter-spacing: -0.015em; }
+h1.proj-title.len-xl { font-size: clamp(22px, 2.3vw, 28px); line-height: 1.15; letter-spacing: -0.008em; font-weight: 800; }
 .project-head > .grow { min-width: 0; }
 .card .t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 @media (max-width: 640px) {
@@ -548,7 +549,7 @@ h1.proj-title.len-xl { font-size: clamp(24px, 2.6vw, 32px); line-height: 1.15; l
 .fsections { gap: 26px; }
 .fbar { margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
 .folder .fhead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 0 0 10px; }
-.folder .fname { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+.folder .fname { font-size: 20px; font-weight: 800; letter-spacing: -0.005em; }
 .folder .fhead .acts { display: flex; gap: 4px; align-items: center; align-self: center; }
 .folder .tracks { border-top-width: 1.5px; }
 .fzone { transition: outline-color .12s; outline: 2px dashed transparent; outline-offset: 6px; }

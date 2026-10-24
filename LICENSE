@@ -20,6 +20,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Bundled fonts (public/fonts/) are not covered by this license: Archivo and
+Bundled fonts (public/fonts/) are not covered by this license: Inter Tight and
 IBM Plex Mono are distributed under the SIL Open Font License 1.1; see
-public/fonts/LICENSE-Archivo.txt and public/fonts/LICENSE-IBM-Plex-Mono.txt.
+public/fonts/LICENSE-Inter-Tight.txt and public/fonts/LICENSE-IBM-Plex-Mono.txt.
