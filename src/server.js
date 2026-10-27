@@ -13,6 +13,7 @@ const watch = require('./watch');
 const { FORMATS } = require('./markers');
 const { notify } = require('./notify');
 const media = require('./media');
+const settings = require('./settings');
 
 const app = express();
 app.disable('x-powered-by');
@@ -54,15 +55,17 @@ const ASSET_V = (() => {
 
 function shell(boot, theme) {
   const json = JSON.stringify(boot).replace(/</g, '\\u003c');
+  const brand = String(settings.get().brand).replace(/[<>&"]/g, '');
   return `<!doctype html>
 <html lang="en"${theme ? ` data-theme="${theme}"` : ''}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>${cfg.BRAND.replace(/[<>&"]/g, '')}</title>
+<title>${brand}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23111'/%3E%3Cpath d='M3 8h1M5 5v6M7 3v10M9 6v4M11 4v8M13 7v2' stroke='%23e8a33d' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/app.css?v=${ASSET_V}">
+<link rel="stylesheet" href="/theme.css?v=${settings.cssVersion()}">
 <script id="boot" type="application/json">${json}</script>
 <script src="/static/app.js?v=${ASSET_V}" defer></script>
 </head>
@@ -213,11 +216,32 @@ const artUpload = multer({
 });
 
 // ---------- pages ----------
-const themeOf = (req) => (['light', 'dark'].includes(req.cookies.qh_theme) ? req.cookies.qh_theme : '');
-const boot = (extra) => ({ brand: cfg.BRAND, owner: cfg.OWNER_NAME, publicUrl: cfg.PUBLIC_URL, ...extra });
+// The visitor's own choice wins; with none saved, the studio's default theme from /admin applies.
+const themeOf = (req) => {
+  const c = req.cookies.qh_theme;
+  if (c === 'light' || c === 'dark') return c;
+  if (c === 'auto') return '';
+  const d = settings.get().defaultTheme;
+  return d === 'light' || d === 'dark' ? d : '';
+};
+const boot = (extra) => {
+  const s = settings.get();
+  return { brand: s.brand, owner: s.owner, footer: s.footer, logo: s.logo ? `/brand/${s.logo}` : '', publicUrl: cfg.PUBLIC_URL, ...extra };
+};
 
 app.use((req, res, next) => { if (!req.path.startsWith('/static/') && !req.path.startsWith('/media/')) res.set('Cache-Control', 'no-cache'); next(); });
 app.get('/', (req, res) => res.type('html').send(shell(boot({ mode: 'admin' }), themeOf(req))));
+app.get(['/admin', '/admin/about'], (req, res) => res.type('html').send(shell(boot({ mode: 'admin' }), themeOf(req))));
+app.get('/theme.css', (req, res) => {
+  res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache');
+  res.type('text/css').send(settings.themeCss());
+});
+app.get('/brand/:file', (req, res) => {
+  const s = settings.get();
+  if (!s.logo || req.params.file !== s.logo) return res.status(404).end();
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.sendFile(path.join(cfg.dirs.root, 'brand', s.logo));
+});
 app.get('/s/:token', (req, res) => {
   const exists = db.prepare('SELECT 1 FROM shares WHERE token = ?').get(req.params.token);
   if (!exists) return res.status(404).type('html').send(shell(boot({ mode: 'missing' }), themeOf(req)));
@@ -727,7 +751,7 @@ A.post('/versions/:id/comments', (req, res) => {
   const body = str(req.body?.body, 4000);
   if (!body) return fail(res, 400, 'Comment is empty');
   try {
-    res.status(201).json(insertComment({ versionId: req.params.id, parentId: str(req.body?.parentId, 40) || null, author: cfg.OWNER_NAME, isOwner: true, body, start: req.body?.start, end: req.body?.end }));
+    res.status(201).json(insertComment({ versionId: req.params.id, parentId: str(req.body?.parentId, 40) || null, author: settings.get().owner, isOwner: true, body, start: req.body?.start, end: req.body?.end }));
   } catch (e) {
     fail(res, e.status || 500, e.message);
   }
@@ -827,6 +851,72 @@ A.delete('/shares/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- studio settings (/admin) ----------
+A.get('/settings', (req, res) => {
+  const s = settings.get();
+  res.json({
+    settings: { ...s, logo: s.logo ? `/brand/${s.logo}` : '' },
+    fonts: Object.entries(settings.FONTS).map(([id, f]) => ({ id, name: f.name, file: f.file })),
+    papers: Object.entries(settings.PAPERS).map(([id, p]) => ({ id, name: p.name, bg: p.bg })),
+    nights: Object.entries(settings.NIGHTS).map(([id, p]) => ({ id, name: p.name, bg: p.bg })),
+    info: { publicUrl: cfg.PUBLIC_URL, dataDir: cfg.DATA_DIR, watchDir: cfg.WATCH_DIR || '', version: require('../package.json').version },
+  });
+});
+
+A.put('/settings', (req, res) => {
+  const s = settings.update(req.body || {});
+  res.json({ settings: { ...s, logo: s.logo ? `/brand/${s.logo}` : '' }, css: settings.cssVersion() });
+});
+
+A.post('/settings/reset', (req, res) => {
+  const groups = { look: ['defaultTheme', 'font', 'accent', 'paper', 'night'], branding: ['brand', 'owner', 'footer'] };
+  const keys = groups[req.body?.group];
+  if (!keys) return fail(res, 400, 'Unknown group');
+  settings.reset(keys);
+  res.json({ ok: true });
+});
+
+A.post('/settings/logo', artUpload.single('logo'), async (req, res) => {
+  const f = req.file;
+  if (!f) return fail(res, 400, 'No image received (png, jpg, webp)');
+  const dir = path.join(cfg.dirs.root, 'brand');
+  fs.mkdirSync(dir, { recursive: true });
+  const name = `logo-${newId(6)}.png`;
+  try {
+    await media.logo(f.path, path.join(dir, name));
+  } catch (e) {
+    fs.rmSync(path.join(dir, name), { force: true });
+    return fail(res, 400, e.message);
+  } finally {
+    fs.rmSync(f.path, { force: true });
+  }
+  const old = settings.get().logo;
+  settings.setLogo(name);
+  if (old) fs.rmSync(path.join(dir, old), { force: true });
+  res.json({ logo: `/brand/${name}` });
+});
+
+A.delete('/settings/logo', (req, res) => {
+  const old = settings.get().logo;
+  settings.setLogo('');
+  if (old) fs.rmSync(path.join(cfg.dirs.root, 'brand', old), { force: true });
+  res.json({ ok: true });
+});
+
+A.post('/settings/test-notify', async (req, res) => {
+  const url = str(req.body?.url, 300) || settings.get().ntfyUrl;
+  if (!url) return fail(res, 400, 'Add an ntfy topic URL first');
+  const ok = await notify(`${settings.get().brand}: test`, 'Notifications are working.', cfg.PUBLIC_URL || undefined, url);
+  if (!ok) return fail(res, 502, 'ntfy did not accept the message. Check the URL.');
+  res.json({ ok: true });
+});
+
+// About this software: credits and the license it's distributed under.
+const LICENSE_TEXT = (() => {
+  try { return fs.readFileSync(path.join(__dirname, '..', 'LICENSE'), 'utf8'); } catch { return ''; }
+})();
+A.get('/about', (req, res) => res.json({ license: LICENSE_TEXT, version: require('../package.json').version }));
+
 app.use('/api', A);
 
 app.use((err, req, res, next) => {
@@ -840,7 +930,7 @@ app.use((err, req, res, next) => {
 for (const f of fs.readdirSync(cfg.dirs.tmp)) fs.rmSync(path.join(cfg.dirs.tmp, f), { force: true, recursive: true });
 
 app.listen(cfg.PORT, cfg.HOST, () => {
-  console.log(`${cfg.BRAND} running on http://${cfg.HOST === '0.0.0.0' ? 'localhost' : cfg.HOST}:${cfg.PORT}  (data: ${cfg.DATA_DIR})`);
+  console.log(`${settings.get().brand} running on http://${cfg.HOST === '0.0.0.0' ? 'localhost' : cfg.HOST}:${cfg.PORT}  (data: ${cfg.DATA_DIR})`);
   jobs.resume();
   watch.start();
 });

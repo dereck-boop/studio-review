@@ -215,11 +215,15 @@
     for (const w of parts.slice(1)) out.push(h('span', { class: 'brand-dot', 'aria-hidden': 'true' }, '●'), w);
     return out;
   }
+  const onAdminPage = () => location.pathname.startsWith('/admin');
   function header() {
+    const home = SHARE ? '#/' : onAdminPage() ? '/' : '#/';
     return h('header', { class: 'top' },
-      h('a', { class: 'brand', href: '#/', 'aria-label': BOOT.brand }, wordmark()),
+      h('a', { class: 'brand' + (BOOT.logo ? ' has-logo' : ''), href: home, 'aria-label': BOOT.brand },
+        BOOT.logo ? h('img', { class: 'brand-logo', src: BOOT.logo, alt: BOOT.brand }) : wordmark()),
       h('div', { class: 'top-right' },
         themeSwitch(),
+        !SHARE && state.admin ? h('a', { class: 'btn ghost sm' + (onAdminPage() ? ' on' : ''), href: '/admin' }, 'Settings') : null,
         !SHARE && state.admin ? h('button', {
           class: 'btn ghost sm',
           onclick: async () => { await api('/logout', { method: 'POST' }); state.admin = false; route(); },
@@ -261,7 +265,8 @@
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => window.dispatchEvent(new Event('qh-theme'))); } catch { /* old browser */ }
 
   function render(...nodes) {
-    fill(root, header(), h('main', { class: 'wrap' }, nodes));
+    fill(root, header(), h('main', { class: 'wrap' }, nodes),
+      BOOT.footer ? h('footer', { class: 'studio-foot' }, BOOT.footer) : null);
   }
 
   function onCleanup(fn) { state.cleanup.push(fn); }
@@ -283,6 +288,12 @@
         return await viewShareHome();
       }
       if (!state.admin) return viewLogin();
+      if (onAdminPage()) {
+        // A normal app link followed from /admin (e.g. #/p/…) goes back to the main page.
+        if (parts.length) return location.replace('/' + location.hash);
+        if (location.pathname.replace(/\/+$/, '') === '/admin/about') return await viewAbout();
+        return await viewSettings();
+      }
       if (parts[0] === 'album' && parts[1]) return await viewAlbum(parts[1]);
       if (parts[0] === 'c' && parts[1]) return await viewHome(parts[1]);
       if (parts[0] === 'p' && parts[1]) return await viewProject(parts[1]);
@@ -329,6 +340,210 @@
     }, pc, h('button', { class: 'btn primary', type: 'submit' }, 'Listen'));
     fill(root, header(), h('main', { class: 'wrap center' }, h('div', { class: 'panel login' }, h('h1', null, 'This link is protected'), h('p', { class: 'sub' }, 'Enter the passcode you were given.'), form)));
     pc.focus();
+  }
+
+  // ---------- studio settings (/admin) ----------
+  const fontsLoaded = new Set();
+  function previewFont(f) {
+    // Loads a bundled font under its own name so the picker can show each one (FontFace is allowed by the CSP).
+    if (!f.file || fontsLoaded.has(f.id) || !window.FontFace) return;
+    fontsLoaded.add(f.id);
+    for (const w of [500, 800]) {
+      const face = new FontFace('Preview ' + f.id, `url(/static/fonts/${f.file}-latin-${w}-normal.woff2)`, { weight: String(w) });
+      face.load().then((ff) => document.fonts.add(ff)).catch(() => {});
+    }
+  }
+  function swapThemeCss(v) {
+    const old = document.querySelector('link[href^="/theme.css"]');
+    const link = h('link', { rel: 'stylesheet', href: '/theme.css?v=' + v });
+    link.addEventListener('load', () => { if (old) old.remove(); window.dispatchEvent(new Event('qh-theme')); });
+    document.head.append(link);
+  }
+
+  async function viewSettings() {
+    let d = await api('/settings');
+    let st = d.settings;
+    let saveTimer = null;
+    const status = h('span', { class: 'set-status mono small' });
+    const save = async (patch, { quiet = false } = {}) => {
+      try {
+        status.textContent = 'Saving…';
+        const r = await api('/settings', { method: 'PUT', body: patch });
+        st = r.settings;
+        swapThemeCss(r.css);
+        if ('brand' in patch || 'footer' in patch || 'owner' in patch) {
+          BOOT.brand = st.brand; BOOT.owner = st.owner; BOOT.footer = st.footer;
+          document.title = st.brand;
+          const hd = root.querySelector('header.top');
+          if (hd) hd.replaceWith(header());
+        }
+        status.textContent = 'Saved';
+        if (!quiet) toast('Saved');
+      } catch (e) { status.textContent = ''; oops(e); }
+    };
+    const saveSoon = (patch) => { clearTimeout(saveTimer); status.textContent = 'Editing…'; saveTimer = setTimeout(() => save(patch, { quiet: true }), 600); };
+    onCleanup(() => clearTimeout(saveTimer));
+
+    const text = (key, label, hint, opts = {}) => {
+      const input = h('input', { type: 'text', value: st[key] || '', placeholder: opts.placeholder || '', maxlength: opts.max || 60 });
+      input.addEventListener('input', () => {
+        if (!input.value.trim() && opts.required) return;
+        saveSoon({ [key]: input.value });
+      });
+      return h('label', { class: 'set-field' }, h('span', { class: 'set-label' }, label), input, hint ? h('span', { class: 'set-hint' }, hint) : null);
+    };
+    const segmented = (key, choices) => h('div', { class: 'seg' }, choices.map(([v, label]) => h('button', {
+      type: 'button',
+      class: st[key] === v ? 'on' : '',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        await save({ [key]: v });
+        btn.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn));
+      },
+    }, label)));
+
+    // Logo
+    const logoInput = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', class: 'hidden' });
+    const logoBox = h('div', { class: 'logo-box' });
+    const drawLogo = () => fill(logoBox,
+      st.logo ? h('div', { class: 'logo-preview' }, h('img', { src: st.logo, alt: 'Logo' })) : h('div', { class: 'logo-preview empty' }, wordmark()),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn sm', onclick: () => logoInput.click() }, st.logo ? 'Replace logo' : 'Upload logo'),
+        st.logo ? h('button', {
+          class: 'btn sm ghost danger',
+          onclick: async () => {
+            try { await api('/settings/logo', { method: 'DELETE' }); st.logo = ''; BOOT.logo = ''; drawLogo(); root.querySelector('header.top').replaceWith(header()); toast('Logo removed: the wordmark is back'); } catch (e) { oops(e); }
+          },
+        }, 'Remove') : null));
+    logoInput.addEventListener('change', async () => {
+      const f = logoInput.files[0];
+      if (!f) return;
+      const fd = new FormData();
+      fd.append('logo', f, f.name);
+      try {
+        const r = await fetch('/api/settings/logo', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Upload failed');
+        st.logo = j.logo; BOOT.logo = j.logo;
+        drawLogo();
+        root.querySelector('header.top').replaceWith(header());
+        toast('Logo updated');
+      } catch (e) { oops(e); } finally { logoInput.value = ''; }
+    });
+    drawLogo();
+
+    // Fonts
+    d.fonts.forEach(previewFont);
+    const fontList = h('div', { class: 'font-list' }, d.fonts.map((f) => h('button', {
+      type: 'button',
+      class: 'font-opt' + (st.font === f.id ? ' on' : ''),
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        await save({ font: f.id });
+        fontList.querySelectorAll('.font-opt').forEach((b) => b.classList.toggle('on', b === btn));
+      },
+    },
+    h('span', { class: 'font-sample', style: f.file ? `font-family:'Preview ${f.id}',sans-serif` : 'font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif' }, 'Harbor Lights'),
+    h('span', { class: 'font-name mono small' }, f.name))));
+
+    // Colors
+    const ACCENTS = [['#d63f26', 'Vermilion'], ['#1f5fd6', 'Cobalt'], ['#0f8a5f', 'Emerald'], ['#c98a00', 'Amber'], ['#6b3fd6', 'Violet'], ['#d6266e', 'Magenta'], ['#111111', 'Ink']];
+    const picker = h('input', { type: 'color', value: st.accent, title: 'Pick any color' });
+    const hex = h('input', { type: 'text', class: 'mono hex', value: st.accent, maxlength: 7, spellcheck: 'false' });
+    const swatchRow = h('div', { class: 'swatches' });
+    const drawSwatches = () => fill(swatchRow, ACCENTS.map(([c, name]) => h('button', {
+      type: 'button', class: 'swatch' + (st.accent === c ? ' on' : ''), title: name, 'aria-label': name, style: `background:${c}`,
+      onclick: async () => { picker.value = c; hex.value = c; await save({ accent: c }); drawSwatches(); },
+    })), h('label', { class: 'swatch custom', title: 'Custom color' }, picker));
+    picker.addEventListener('input', () => { hex.value = picker.value; saveSoon({ accent: picker.value }); });
+    picker.addEventListener('change', () => drawSwatches());
+    hex.addEventListener('input', () => { if (/^#[0-9a-f]{6}$/i.test(hex.value)) { picker.value = hex.value; saveSoon({ accent: hex.value }); } });
+    drawSwatches();
+    const bgChoices = (key, list) => {
+      const row = h('div', { class: 'bg-list' });
+      const draw = () => fill(row, list.map((b) => h('button', {
+        type: 'button', class: 'bg-opt' + (st[key] === b.id ? ' on' : ''),
+        onclick: async () => { await save({ [key]: b.id }); draw(); },
+      }, h('span', { class: 'bg-chip', style: `background:${b.bg}` }), h('span', { class: 'small' }, b.name))));
+      draw();
+      return row;
+    };
+
+    // Notifications
+    const ntfy = h('input', { type: 'text', class: 'mono', value: st.ntfyUrl || '', placeholder: 'https://ntfy.sh/your-secret-topic', maxlength: 300 });
+    ntfy.addEventListener('input', () => { if (!ntfy.value.trim() || /^https?:\/\/\S+$/i.test(ntfy.value.trim())) saveSoon({ ntfyUrl: ntfy.value.trim() }); });
+
+    const section = (title, sub, ...body) => h('section', { class: 'set-sec' },
+      h('div', { class: 'set-head' }, h('h2', null, title), sub ? h('p', { class: 'sub small' }, sub) : null),
+      h('div', { class: 'set-body' }, body));
+    const resetBtn = (group, label) => h('button', {
+      class: 'btn sm ghost',
+      onclick: async () => {
+        if (!confirm(`Reset ${label} to the defaults?`)) return;
+        try { await api('/settings/reset', { method: 'POST', body: { group } }); location.reload(); } catch (e) { oops(e); }
+      },
+    }, `Reset ${label}`);
+
+    render(h('div', { class: 'stack settings' },
+      h('div', { class: 'set-title' }, bigTitle('Settings'), status),
+      section('Studio', 'How your studio appears to you and to clients.',
+        text('brand', 'Studio name', 'Shown in the header and the browser tab. Two words look best: the dot goes between them.', { required: true, placeholder: 'Northside Review' }),
+        text('owner', 'Your name', 'Shown on the notes you leave.', { required: true, placeholder: 'Sam' }),
+        text('footer', 'Client page footer', 'A line at the bottom of every page, e.g. your studio, city and website. Leave empty for none.', { max: 200, placeholder: 'Northside Studio · Boston · northside.studio' }),
+        h('div', { class: 'set-field' }, h('span', { class: 'set-label' }, 'Logo'), logoBox, logoInput,
+          h('span', { class: 'set-hint' }, 'Optional. Replaces the wordmark in the header. A wide PNG with a transparent background works best; it is shown about 28 px tall.')),
+        h('div', { class: 'row' }, resetBtn('branding', 'studio names'))),
+      section('Look', 'Applies to your pages and every client link right away.',
+        h('div', { class: 'set-field' }, h('span', { class: 'set-label' }, 'Default theme'), segmented('defaultTheme', [['auto', 'Match system'], ['light', 'Light'], ['dark', 'Dark']]),
+          h('span', { class: 'set-hint' }, 'What clients see first. Anyone can still switch with the buttons at the top right.')),
+        h('div', { class: 'set-field' }, h('span', { class: 'set-label' }, 'Font'), fontList),
+        h('div', { class: 'set-field' }, h('span', { class: 'set-label' }, 'Accent color'), h('div', { class: 'row' }, swatchRow, hex),
+          h('span', { class: 'set-hint' }, 'Used for buttons, note markers and the dot in the wordmark. It is lightened automatically in dark mode so it stays readable.')),
+        h('div', { class: 'set-field' }, h('span', { class: 'set-label' }, 'Light background'), bgChoices('paper', d.papers)),
+        h('div', { class: 'set-field' }, h('span', { class: 'set-label' }, 'Dark background'), bgChoices('night', d.nights)),
+        h('div', { class: 'row' }, resetBtn('look', 'look'))),
+      section('Notifications', 'Phone pushes through the free ntfy app when a link is first opened or a client leaves a note.',
+        h('label', { class: 'set-field' }, h('span', { class: 'set-label' }, 'ntfy topic URL'), ntfy,
+          h('span', { class: 'set-hint' }, 'Install ntfy on your phone, subscribe to a long, unguessable topic name, and paste its address here.')),
+        h('div', { class: 'row' }, h('button', {
+          class: 'btn sm',
+          onclick: async () => {
+            try { await api('/settings/test-notify', { method: 'POST', body: { url: ntfy.value.trim() } }); toast('Test sent: check your phone'); } catch (e) { oops(e); }
+          },
+        }, 'Send a test'))),
+      section('Server', null,
+        h('dl', { class: 'set-info' },
+          h('dt', null, 'Public address'), h('dd', { class: 'mono' }, d.info.publicUrl || location.origin),
+          h('dt', null, 'Data folder'), h('dd', { class: 'mono' }, d.info.dataDir),
+          d.info.watchDir ? [h('dt', null, 'Watch folder'), h('dd', { class: 'mono' }, d.info.watchDir)] : null,
+          h('dt', null, 'Version'), h('dd', { class: 'mono' }, d.info.version)),
+        h('p', { class: 'set-hint' }, 'The sign-in password and web address are set in the .env file on the server.')),
+      h('a', { class: 'about-link', href: '/admin/about' }, h('span', null, 'About Studio Review'), h('span', { class: 'sub' }, 'Credits, contact and the MIT license'), h('span', { class: 'arrow' }, '→'))));
+  }
+
+  async function viewAbout() {
+    const d = await api('/about');
+    const row = (k, v) => [h('dt', null, k), h('dd', null, v)];
+    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text || href.replace(/^https?:\/\/|^mailto:/, ''));
+    render(h('div', { class: 'stack about' },
+      h('div', { class: 'crumbs' }, h('a', { href: '/admin' }, 'Settings'), ' / About'),
+      bigTitle('About'),
+      h('p', { class: 'about-lead' }, 'Studio Review is a private mix-review server for recording, mixing and mastering engineers: timestamped client notes, versions, mastering QC and vinyl planning, on a server you own.'),
+      h('section', { class: 'set-sec' },
+        h('div', { class: 'set-head' }, h('h2', null, 'Created by')),
+        h('div', { class: 'set-body' },
+          h('div', { class: 'about-name' }, 'Dereck Blackburn'),
+          h('div', { class: 'sub' }, 'Recording engineer, mixer and producer · Quiethouse Recording, Boston, MA'),
+          h('dl', { class: 'set-info' },
+            row('Studio', 'Quiethouse Recording'),
+            row('Website', link('https://quiethouserecording.com')),
+            row('Email', link('mailto:dereck@quiethouserecording.com', 'dereck@quiethouserecording.com')),
+            row('Source code', link('https://github.com/dereck-boop/studio-review')),
+            row('Version', d.version)))),
+      h('section', { class: 'set-sec' },
+        h('div', { class: 'set-head' }, h('h2', null, 'License'), h('p', { class: 'sub small' }, 'Open source under the MIT License: free to use, change and share, including commercially, as long as the copyright notice stays with it.')),
+        h('div', { class: 'set-body' },
+          h('pre', { class: 'license' }, d.license || 'MIT License. See the LICENSE file that came with the software.')))));
   }
 
   // ---------- projects home (admin) ----------

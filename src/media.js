@@ -121,6 +121,15 @@ async function artwork(input, fullOut, thumbOut) {
   await make(thumbOut, 480, 3);
 }
 
+// Studio logo for the header: PNG (keeps transparency), at most 160 px tall and 800 px wide.
+async function logo(input, out) {
+  const { code, stderr } = await run('ffmpeg', [
+    '-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-frames:v', '1',
+    '-vf', "scale='min(800,iw)':'min(160,ih)':force_original_aspect_ratio=decrease,format=rgba", out,
+  ]);
+  if (code !== 0) throw new Error('That file isn’t an image ffmpeg can read: ' + lastLine(stderr));
+}
+
 // Streams a process's stderr line by line (ebur128/astats logs can be megabytes long).
 function eachStderrLine(cmd, args, onLine) {
   return new Promise((resolve, reject) => {
@@ -268,4 +277,4 @@ async function analyze(input, info) {
   return out;
 }
 
-module.exports = { probe, transcode, loudness, peaks, artwork, analyze };
+module.exports = { logo, probe, transcode, loudness, peaks, artwork, analyze };

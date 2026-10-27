@@ -25,6 +25,7 @@ There are no client accounts and no public sign-up. Only you and the people you 
 - **Link activity.** See whether a link was opened, by whom, what they played and what they downloaded. You can get an optional phone push the first time someone opens a link or leaves a note (via the free [ntfy](https://ntfy.sh) app).
 - **Note export** as a revision list (.txt), Reaper markers/regions (.csv), an Audacity label track, or a spreadsheet CSV.
 - **Watch folder (optional).** Bounce into `<folder>/<Project>/Song_v4.wav` and it imports itself.
+- **Your branding, your look.** The **Settings** page (`/admin`) sets the studio name, your name, an optional logo, a footer line for client pages, the default theme, the font (six bundled grotesks), the accent color and the light/dark backgrounds. Changes apply instantly, for you and every client link.
 - **Light, dark or auto theme.**
 
 **For your clients**
@@ -42,6 +43,8 @@ Originals are stored untouched. Clients stream a 256 kbps AAC copy and only get 
 | Track page: versions, loudness, numbered notes | Album view: program playback and QC numbers |
 | ![Vinyl planner](docs/screenshots/vinyl-planner.png) | ![Client view on a phone](docs/screenshots/client-track-phone.png) |
 | Vinyl sides with fit checks | What your client sees on their phone |
+| ![Settings page](docs/screenshots/settings.png) | ![About page](docs/screenshots/about.png) |
+| Settings: branding, fonts, colors, theme, notifications | About: credits and the MIT license |
 
 ---
 
@@ -98,15 +101,28 @@ Caddy (included in the compose file) gets an HTTPS certificate for your `DOMAIN`
 
 ## Settings
 
-All settings live in `.env`. After changing it, run `docker compose up -d --force-recreate` (or restart `npm start`).
+### The Settings page (`/admin`)
+
+Sign in and click **Settings** at the top right (or go to `https://your-address/admin`). Everything there saves as you change it:
+
+- **Studio:** studio name (header and browser tab), your name (on your notes), a footer line for every page, and an optional logo that replaces the wordmark.
+- **Look:** the theme clients see first (match system, light or dark), the font (Inter Tight, Archivo, Schibsted Grotesk, Hanken Grotesk, Host Grotesk or the system font), the accent color (presets or any color; it is lightened automatically for dark mode), and the light and dark background tones. **Reset look** puts it all back.
+- **Notifications:** your ntfy topic, with a **Send a test** button.
+- **About Studio Review:** credits, contact and the full MIT license.
+
+Values saved on the Settings page take priority over `BRAND`, `OWNER_NAME` and `NTFY_URL` in `.env`; those become the starting defaults.
+
+### Server settings (`.env`)
+
+Server-level settings live in `.env`. After changing it, run `docker compose up -d --force-recreate` (or restart `npm start`).
 
 | Variable | Default | What it does |
 |---|---|---|
 | `ADMIN_PASSWORD` | required | Your sign-in password, 8+ characters. Avoid `$` and quotes. |
 | `DOMAIN` | none | Your review address without `https://`, e.g. `review.yourstudio.com`. Used for HTTPS and share links. |
-| `BRAND` | `Studio Review` | Name in the header. Two words look best (the dot sits between them). |
-| `OWNER_NAME` | `Engineer` | Your name on the notes you leave. |
-| `NTFY_URL` | off | An ntfy topic URL such as `https://ntfy.sh/my-studio-x8k2q9` for phone pushes. |
+| `BRAND` | `Studio Review` | Starting studio name (change it later on the Settings page). Two words look best. |
+| `OWNER_NAME` | `Engineer` | Starting name for your notes (also on the Settings page). |
+| `NTFY_URL` | off | Starting ntfy topic for phone pushes (also on the Settings page). |
 | `WATCH_DIR` | off | Folder to auto-import bounces from (`/watch` in Docker; mount it in compose). |
 | `PUBLIC_URL` | `https://DOMAIN` | Overrides the address used in share links. |
 | `DATA_DIR` | `./data` | Where the database and audio are stored (Docker sets `/data`). |
@@ -118,7 +134,7 @@ All settings live in `.env`. After changing it, run `docker compose up -d --forc
 
 1. Install **ntfy** on your phone (iOS or Android, free).
 2. Make up a long, unguessable topic name such as `northside-notes-x8k2q9` and subscribe to it in the app.
-3. Set `NTFY_URL=https://ntfy.sh/northside-notes-x8k2q9` in `.env`, then run `docker compose up -d --force-recreate`.
+3. Paste `https://ntfy.sh/northside-notes-x8k2q9` into **Settings → Notifications** and press **Send a test**. (Or set `NTFY_URL` in `.env` and run `docker compose up -d --force-recreate`.)
 
 You'll get a push when someone opens a link for the first time and when a client posts a note.
 
@@ -199,7 +215,7 @@ Copy the data folder somewhere safe on a schedule (`rsync`, or your host's volum
 | Locked out after too many tries | Wait 15 minutes, or run `docker compose restart review`. |
 | Forgot your password | Set a new one in `.env`, then run `docker compose up -d --force-recreate`. |
 | Site won't load, or shows a certificate error | `DOMAIN` is empty or wrong, or DNS doesn't point at the server yet. Check with `ping review.yourstudio.com`, fix `.env`, then run `docker compose up -d --force-recreate`. Caddy's log: `docker compose logs caddy`. |
-| ntfy pushes don't arrive | Check the topic matches exactly, then recreate the container (`--force-recreate`). |
+| ntfy pushes don't arrive | Use **Settings → Notifications → Send a test**. The topic must match the one you subscribed to exactly. |
 | Album view says "Analyzing…" | The first analysis takes a few seconds per track. Reopen the window. |
 | Anything else | `docker compose logs -f review` shows what the app is doing. |
 
@@ -213,6 +229,7 @@ src/media.js      ffprobe + ffmpeg: streaming copy, waveform peaks, loudness, QC
 src/markers.js    note export formats
 src/zip.js        streaming zip for "Download all"
 src/notify.js     ntfy notifications
+src/settings.js   Settings page values and the generated theme stylesheet
 src/watch.js      watch-folder importer
 src/auth.js       sign-in cookie, share passcodes, rate limiting
 public/           the single-page interface (plain JS, no build step)
